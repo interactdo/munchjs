@@ -20,7 +20,7 @@ var    path = require('path'),
         clc = require('cli-color'),
       parse = require('css-parse'),
     Hashids = require('hashids'),
-    hashids = new Hashids("use the force harry");
+    hashids = new Hashids("Munch", 11, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
 /**
  * MUNCHER!!!!
@@ -63,14 +63,23 @@ Muncher.prototype.init = function(args) {
 
     // a reference to `this`
     var that = this;
-    
-    // set the ignore maps for Ids and Classes
-    this.ignore = args['ignore'] || '';
-    this.ignore.split(',').forEach(function(ign) {
-        ign = ign.replace(/\s/,'');
-        if (ign.indexOf('.') === 0) that.ignoreClasses.push(ign.replace('.', ''));
-        if (ign.indexOf('#') === 0) that.ignoreIds.push(ign.replace('#', ''));
-    });
+
+    if (args.ignore != null) {
+        // set the ignore maps for Ids and Classes
+        var ignoreList = JSON.parse(fs.readFileSync(args.ignore, 'utf-8').toString())
+
+        // Ignore classes
+        ignoreList.class.forEach(function(ign) {
+            ign = ign.replace(/\s/,'');
+            that.ignoreClasses.push(ign);
+        });
+
+        // Ignore ids
+        ignoreList.id.forEach(function(ign) {
+            ign = ign.replace(/\s/,'');
+            that.ignoreIds.push(ign);
+        });
+    }
 
     // set the default view extension
     this.extensions = {
@@ -95,6 +104,9 @@ Muncher.prototype.init = function(args) {
 
     this.readFile = args['read'];
 
+    // Used if suffix is defined
+    this.suffix = args['suffix'] || '';
+
     // paths given from the configuration
     this.paths = {
         "view": args['view'],
@@ -106,7 +118,7 @@ Muncher.prototype.init = function(args) {
     return this;
 }
 
-/** 
+/**
  * run
  *
  * sets various options to run the Muncher
@@ -141,10 +153,6 @@ Muncher.prototype.run = function() {
 
         this.echo('-------------------------------');
         this.echo(clc.bold('Wrote ' + this.mapCounter + ' ids and classes in ' + this.mapFile));
-        this.echo('-------------------------------\n');
-        return;
-    } else {
-        this.echo('-------------------------------');
         this.echo(clc.bold('Mapped ' + this.mapCounter + ' IDs and Classes'));
         this.echo('-------------------------------\n');
     }
@@ -156,7 +164,7 @@ Muncher.prototype.run = function() {
 
 }
 
-/** 
+/**
  * read
  *
  * use a map file to serve as the dictionary
@@ -177,7 +185,7 @@ Muncher.prototype.read = function(read) {
 
 }
 
-/** 
+/**
  * parseDir
  *
  * parse directories according to context
@@ -187,7 +195,7 @@ Muncher.prototype.read = function(read) {
  */
 Muncher.prototype.parseDir = function(path, context) {
     var that = this;
-        
+
     that.echo(clc.bold('Processing ' + context));
 
     that.paths[context].split(',').forEach(function(path) {
@@ -202,12 +210,12 @@ Muncher.prototype.parseDir = function(path, context) {
             that.parse(path, context);
         }
     });
-    
+
     that.echo(clc.green.bold('Finished!\n'));
 
 }
 
-/** 
+/**
  * buildDir
  *
  * build directories according to context
@@ -216,7 +224,7 @@ Muncher.prototype.parseDir = function(path, context) {
  * @param context String either view, js or css
  */
 Muncher.prototype.buildDir = function(path, context) {
-    var that = this;    
+    var that = this;
 
     that.echo(clc.bold('Rewriting ' + context));
 
@@ -232,11 +240,11 @@ Muncher.prototype.buildDir = function(path, context) {
             that.build(path, context);
         }
     });
-    
+
     that.echo(clc.green.bold('Finished!\n'));
 }
 
-/** 
+/**
  * echo
  *
  * wrap the console.log method
@@ -247,7 +255,7 @@ Muncher.prototype.echo = function(message) {
     if (!this.silent) console.log(message);
 }
 
-/** 
+/**
  * parse
  *
  * parse files according to context
@@ -266,10 +274,10 @@ Muncher.prototype.parse = function(file, context) {
             case "view":
                 this.parseHtml(content);
             break;
-            case "css": 
+            case "css":
                 this.parseCss(content);
             break;
-            case "js": 
+            case "js":
                 this.parseJs(content);
             break;
         }
@@ -280,7 +288,7 @@ Muncher.prototype.parse = function(file, context) {
 
 }
 
-/** 
+/**
  * build
  *
  * build files according to context
@@ -296,17 +304,17 @@ Muncher.prototype.build = function(file, context) {
         case "view":
             this.rewriteHtml(content, file);
         break;
-        case "css": 
+        case "css":
             this.rewriteCss(content, file);
         break;
-        case "js": 
+        case "js":
             this.rewriteJs(content, file);
         break;
     }
 
 }
 
-/** 
+/**
  * addCss
  *
  * adds Classes to the CLASS map
@@ -317,11 +325,13 @@ Muncher.prototype.addClass = function(cl) {
     var that = this;
 
     var addClass = function(cls) {
-        if (that.ignoreClasses.indexOf(cls) > -1) return true; // shoul be a list of no-nos
-        if (!that.map["class"][cls]) {
-            that.map["class"][cls] = hashids.encrypt(that.mapCounter); 
-            that.mapCounter++;
-        }
+        cls.split(' ').forEach(function(c) {
+            if (hasMatching(c, that.ignoreClasses)) {return true;} // shoul be a list of no-nos
+            else if (!that.map["class"][c]) {
+                that.map["class"][c] = hashids.encrypt(that.mapCounter);
+                that.mapCounter++;
+            }
+        })
     }
 
     if (typeof cl == 'object'){
@@ -332,10 +342,10 @@ Muncher.prototype.addClass = function(cl) {
         }
     } else {
         addClass(cl);
-    } 
+    }
 }
 
-/** 
+/**
  * addId
  *
  * adds Ids to the ID map
@@ -343,14 +353,14 @@ Muncher.prototype.addClass = function(cl) {
  * @param id String
  */
 Muncher.prototype.addId = function(id) {
-    if (!this.map["id"][id]) {
-        if (!this.ignoreIds.indexOf(id)) return true; // shoul be a list of no-nos
+    if (hasMatching(id, this.ignoreIds)) return true; // shoul be a list of no-nos
+    if (id != "" && !this.map["id"][id]) {
         this.map["id"][id] = hashids.encrypt(this.mapCounter);
         this.mapCounter++;
     }
 }
 
-/** 
+/**
  * parseCssSelector
  *
  * parse CSS strings to get their classes and ids
@@ -377,7 +387,7 @@ Muncher.prototype.parseCssSelector = function(selector) {
     }
 }
 
-/** 
+/**
  * parseHtml
  *
  * parse HTML documents to get their classes and ids
@@ -393,21 +403,10 @@ Muncher.prototype.parseHtml = function(html) {
                 id = target.attr('id'),
            classes = target.attr('class');
 
-        if (id) {
-            that.addId(id);
-        }
-
-        if (classes) {
-            var newClass = [];
-
-            classes.split(' ').forEach(function(cl) {
-                that.addClass(cl);
-            });
-
-        }
+        that.addId(id);
 
         if (target.is('style')) {
-            var  style = target.text();
+            var style = target.text();
             that.parseCss(style);
         }
 
@@ -421,17 +420,16 @@ Muncher.prototype.parseHtml = function(html) {
     if (script != '') {
         that.parseJs(script);
     }
-
 }
 
-/** 
+/**
  * parseCss
  *
  * parse CSS documents to get their classes and ids
  *
  * @param css String the css document
  */
-Muncher.prototype.parseCss = function(css) { 
+Muncher.prototype.parseCss = function(css) {
     var   that = this,
            css = parse(css),
         styles = [];
@@ -447,13 +445,15 @@ Muncher.prototype.parseCss = function(css) {
     });
 
     $.each(styles, function(o, style) {
-        style.selectors.forEach(function(selector) {
-            that.parseCssSelector(selector);
-        });
+        if (style.selectors != null) {
+            style.selectors.forEach(function (selector) {
+                that.parseCssSelector(selector);
+            });
+        }
     });
 }
 
-/** 
+/**
  * parseJs
  *
  * parse JS documents to get their classes and ids
@@ -472,26 +472,47 @@ Muncher.prototype.parseJs = function(js) {
     }
 
     // id and class
-    var pass4 = /getElementsByClassName\([\'"](.*?)[\'"]/gi;
+    var pass4 = /getElementById[(]['"](.+?)['"][)]/gi;
     while ((match = pass4.exec(js)) !== null) {
-        this.addClass(match[1].split(' '));
-    }
-
-    var pass5 = /getElementById\([\'"](.*?)[\'"]/gi;
-    while ((match = pass5.exec(js)) !== null) {
         this.addId(match[1]);
     }
 
+    var pass6a = /[$][()]['"]#([^ +'",:()]+?)[ :][a-z0-9<>]/gi;
+    while ((match = pass6a.exec(js)) !== null) {
+         this.addId(match[1]);
+    }
+
+    var pass6b = /[$][(]['"].*?[a-z0-9<>][ ]#([^ +'",:()]+?)[ :][a-z0-9<>]/gi;
+    while ((match = pass6b.exec(js)) !== null) {
+         this.addId(match[1]);
+    }
+
+    var pass6c = /[$][(]['"].*?[a-z0-9<>][ ]#([^ +'",:()]+?)['"]/gi;
+    while ((match = pass6c.exec(js)) !== null) {
+         this.addId(match[1]);
+    }
+
+    var pass6d = /['"]#([^ +'",:()]+?)['"]/gi;
+    while ((match = pass6d.exec(js)) !== null) {
+         this.addId(match[1]);
+    }
+
+
     // attr
-    var pass7 = /setAttribute\([\'"](id|class)[\'"],\s[\'"](.+?)[\'"]/gi;
-    while ((match = pass7.exec(js)) !== null) {
+    var pass8 = /setAttribute[(]['"](id|class)['"],\s['"](.+?)['"]/gi;
+    while ((match = pass8.exec(js)) !== null) {
         if (match[1] == 'class') this.addClass(match[2].split(' '));
         if (match[1] == 'id') this.addId(match[2]);
     }
 
+    // embedded html for class and id
+    var pass9a = /id[=]["']([^+" ,:()]+?)["']/gi;
+    while ((match = pass9a.exec(js)) !== null) {
+        this.addId(match[1]);
+    }
 }
 
-/** 
+/**
  * rewriteHtml
  *
  * replaces the ids and classes in the files specified
@@ -512,14 +533,14 @@ Muncher.prototype.rewriteHtml = function(html, to) {
            classes = target.attr('class');
 
         if (id) {
-            if (!that.ignoreIds.indexOf(id)) return true;
+            if (hasMatching(id, that.ignoreIds)) return true;
             target.attr('id', that.map["id"][id]);
         }
 
         if (classes) {
             var newClass = [];
             classes.split(' ').forEach(function(cl) {
-                if (!that.ignoreClasses.indexOf(cl)) return true;
+                if (hasMatching(cl, that.ignoreClasses)) return true;
                 if (that.map["class"][cl]) {
                     target.removeClass(cl).addClass(that.map["class"][cl]);
                 }
@@ -533,14 +554,14 @@ Muncher.prototype.rewriteHtml = function(html, to) {
     html = this.rewriteJsBlock(html);
     html = this.rewriteCssBlock(html, this.compress['view']);
 
-    fs.writeFileSync(to + '.munched', (this.compress['view']) ? this.compressHtml(html): html);
+    fs.writeFileSync(to + this.suffix, (this.compress['view']) ? this.compressHtml(html): html);
 
-    var percent = 100 - ((fs.statSync(to + '.munched').size / this.files[to]) * 100);
+    var percent = 100 - ((fs.statSync(to + this.suffix).size / this.files[to]) * 100);
     var savings = (that.showSavings) ? clc.blue.bold(percent.toFixed(2) + '%') + ' Saved for ': '';
-    that.echo(savings + to + '.munched');
+    that.echo(savings + to + this.suffix);
 }
 
-/** 
+/**
  * rewriteCssString
  *
  * rewrite a CSS String
@@ -564,34 +585,43 @@ Muncher.prototype.rewriteCssString = function(css) {
     });
 
     $.each(styles, function(u, style) {
-        style.selectors.forEach(function(selector) {
-            var original = selector,
-                     tid = selector.match(/#[\w\-]+/gi),
-                     tcl = selector.match(/\.[\w\-]+/gi);
+        if (style.selectors != null) {
+            style.selectors.forEach(function (selector) {
+                var original = selector,
+                    tid = selector.match(/#[\w\-]+/gi),
+                    tcl = selector.match(/\.[\w\-]+/gi);
 
-            if (tid) {
-                $.each(tid, function(i, match) {
-                    match = match.replace('#', '');
-                    if (that.ignoreIds.indexOf(match) > -1) return true;
-                    selector = selector.replace(new RegExp("#" + match.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"), "gi"), '#' + that.map["id"][match]);
-                });
-            }
-            if (tcl) {
-                $.each(tcl, function(o, match) {
-                    match = match.replace('.', '');
-                    if (that.ignoreClasses.indexOf(match) > -1) return true;
-                    selector = selector.replace(new RegExp("\\." + match.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"), "gi"), '.' + that.map["class"][match]);
-                });
-            }
+                if (tid) {
+                    $.each(tid, function (i, match) {
+                        match = match.replace('#', '');
+                        if (hasMatching(match, that.ignoreIds)) return true;
+                        if (that.map["id"][match] == null) return true;
+                        selector = selector.replace(new RegExp("#" + match.replace(/[\-\[\]\/\{\}[(][)]\*\+\?\.\\\^\$\|]/g, "\\$&"), "i"), '#' + that.map["id"][match]);
+                    });
+                }
+                if (tcl) {
+                    $.each(tcl, function (o, match) {
+                        match = match.replace('.', '');
+                        if (hasMatching(match, that.ignoreClasses)) return true;
+                        if (that.map["class"][match] == null) return true;
+                        // console.log("Matched style: " + tcl + " replace " + match.replace(/[\-\[\]\/\{\}[(][)]\*\+\?\.\\\^\$\|]/g, "\\$&") + " with " + that.map["class"][match] + " in " + selector)
+                        selector = selector.replace(new RegExp("\\." + match.replace(/[\-\[\]\/\{\}[(][)]\*\+\?\.\\\^\$\|]/g, "\\$&"), "i"), '.' + that.map["class"][match]);
+                    });
+                }
 
-            text = text.replace(original, selector);
-        });
+                var originalSelector = new RegExp(escapeRegExp(original) + "([.#: >])")
+                var replacementSelector = selector + "$1"
+                // console.log("Performing replace from: " + originalSelector + " to " + replacementSelector)
+
+                text = text.replace(originalSelector, replacementSelector);
+            });
+        }
     });
 
     return text;
 }
 
-/** 
+/**
  * rewriteCssBlock
  *
  * rewrite a CSS block in an html document
@@ -617,7 +647,7 @@ Muncher.prototype.rewriteCssBlock = function(html, compress) {
     return document.innerHTML;
 }
 
-/** 
+/**
  * rewriteCss
  *
  * rewrite a CSS file
@@ -631,14 +661,14 @@ Muncher.prototype.rewriteCss = function(css, to) {
 
     that.files[to] = fs.statSync(to).size;
 
-    fs.writeFileSync(to + '.munched', (this.compress['css']) ? this.compressCss(text): text);
+    fs.writeFileSync(to + this.suffix, (this.compress['css']) ? this.compressCss(text): text);
 
-    var percent = 100 - ((fs.statSync(to + '.munched').size / this.files[to]) * 100);
+    var percent = 100 - ((fs.statSync(to + this.suffix).size / this.files[to]) * 100);
     var savings = (that.showSavings) ? clc.blue.bold(percent.toFixed(2) + '%') + ' Saved for ': '';
-    that.echo(savings + to + '.munched');
+    that.echo(savings + to + this.suffix);
 }
 
-/** 
+/**
  * rewriteJsString
  *
  * rewrite a JS String
@@ -650,35 +680,151 @@ Muncher.prototype.rewriteJsString = function(js) {
         match = null;
 
     // id and class
-    var pass4 = /getElementsByClassName\([\'"](.*?)[\'"]/gi;
+    var pass4 = /getElementById[(]['"](.+?)['"][)]/gi;
     while ((match = pass4.exec(js)) !== null) {
-        if (that.ignoreClasses.indexOf(match[1]) > -1) continue;
-        var passed = match[0].replace(new RegExp(match[1], "gi"), that.map["class"][match[1]]);
+        if (hasMatching(match[1], that.ignoreIds)) continue;
+        if (that.map["id"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["id"][match[1]]);
         js = js.replace(match[0], passed);
     }
 
-    var pass5 = /getElementById\([\'"](.*?)[\'"]/gi;
+    var pass5 = /getElementsByClassName[(]['"](.+?)['"][)]/gi;
     while ((match = pass5.exec(js)) !== null) {
-        if (that.ignoreIds.indexOf(match[1]) > -1) continue;
-        var passed = match[0].replace(new RegExp(match[1], "gi"), that.map["id"][match[1]]);
+        if (hasMatching(match[1], that.ignoreClasses)) continue;
+        if (that.map["class"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["class"][match[1]]);
         js = js.replace(match[0], passed);
     }
+
+    // id scenarios
+    var pass6a = /[$][(]['"]#([^ +'",:()]+?)[ :][a-z0-9<>]/gi;
+    while ((match = pass6a.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreIds)) continue;
+        if (that.map["id"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["id"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    var pass6b = /[$][(]['"].*?[a-z0-9<>][ ]#([^ +'",:()]+?)[ :][a-z0-9<>]/gi;
+    while ((match = pass6b.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreIds)) continue;
+        if (that.map["id"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["id"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    var pass6c = /[$][(]['"].*?[a-z0-9<>][ ]#([^ +'",:()]+?)['"]/gi;
+    while ((match = pass6c.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreIds)) continue;
+        if (that.map["id"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["id"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    var pass6d = /['"]#([^ +'",:()]+?)['"]/gi;
+    while ((match = pass6d.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreIds)) continue;
+        if (that.map["id"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["id"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    // classes scenarios
+    var pass7a = /[$][(]['"][.]([^ +'",:()]+?)[ :][a-z0-9<>]/gi;
+    while ((match = pass7a.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreClasses)) continue;
+        if (that.map["class"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["class"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    var pass7b = /[$][(]['"].*?[a-z0-9<>][ ][.]([^ +'",:()]+?)[ :][a-z0-9<>]/gi;
+    while ((match = pass7b.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreClasses)) continue;
+        if (that.map["class"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["class"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    var pass7c = /[$][(]['"].*?[a-z0-9<>][ ][.]([^ +'",:()]+?)['"]/gi;
+    while ((match = pass7c.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreClasses)) continue;
+        if (that.map["class"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["class"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    var pass7d = /['"][.]([^ +'",:()]+?)['"]/gi;
+    while ((match = pass7d.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreClasses)) continue;
+        if (that.map["class"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["class"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
 
     // attr
-    var pass7 = /setAttribute\([\'"](id|class)[\'"],\s[\'"](.+?)[\'"]/gi;
-    while ((match = pass7.exec(js)) !== null) {
+    var pass8 = /setAttribute[(]['"](id|class)['"],\s['"](.+?)['"]/gi;
+    while ((match = pass8.exec(js)) !== null) {
         var key = (match[1] == 'id') ? 'id': 'class';
         if (key == 'class') {
             var passed = match[0],
                 splitd = match[2].split(' ');
             $.each(splitd, function(i, cls) {
-                if (that.ignoreClasses.indexOf(cls) > -1) return true;
-                passed = passed.replace(new RegExp(cls, "gi"), that.map[key][cls]);
+                if (hasMatching(cls, that.ignoreClasses)) return true;
+                if (that.map["class"][cls] == null) return true;
+                passed = passed.replace(new RegExp(cls, ""), that.map[key][cls]);
             });
         } else {
-            if (that.ignoreIds.indexOf(match[2]) > -1) continue;
-            var passed = match[0].replace(new RegExp(match[2], "gi"), that.map[key][match[2]]);
+            if (hasMatching(match[2], that.ignoreIds)) continue;
+            if (that.map["id"][match[2]] == null) return true;
+            var passed = match[0].replace(new RegExp(match[2], ""), that.map[key][match[2]]);
         }
+        js = js.replace(match[0], passed);
+    }
+
+
+    // embedded html for class and id
+    var pass9a = /id[ ]*[!=]?[=][ ]*["']([^+" ,:()]+?)["']/gi;
+    while ((match = pass9a.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreIds)) continue;
+        if (that.map["id"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["id"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    var pass9b = /class[ ]*[!=]?[=][ ]*["']([^+",:()]+?)["']/gi;
+    while ((match = pass9b.exec(js)) !== null) {
+        var totalMatch = match[0]
+
+        // console.log('Replace class ' + match[1])
+        match[1].split(' ').forEach(function(v) {
+            if (hasMatching(v, that.ignoreClasses)) {}
+            else if (that.map["class"][v] == null) {}
+            else {
+                // console.log('Replacing in class= ' + v + ' with ' + that.map["class"][v])
+                var passed = totalMatch.replace(new RegExp(v, ""), that.map["class"][v]);
+                // console.log('Passed value ' + passed)
+                js = js.replace(totalMatch, passed);
+                totalMatch = passed;
+                // console.log("Match " + totalMatch + "  " + v + "  " + passed)
+            }
+        })
+    }
+
+    var pass10a = /removeClass[(]['"]([^+'" ,:()]+?)['"][)]/gi;
+    while ((match = pass10a.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreClasses)) continue;
+        if (that.map["class"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["class"][match[1]]);
+        js = js.replace(match[0], passed);
+    }
+
+    var pass10b = /addClass[(]['"]([^+'" ,:()]+?)['"][)]/gi;
+    while ((match = pass10b.exec(js)) !== null) {
+        if (hasMatching(match[1], that.ignoreClasses)) continue;
+        if (that.map["class"][match[1]] == null) continue;
+        var passed = match[0].replace(new RegExp(match[1], ""), that.map["class"][match[1]]);
         js = js.replace(match[0], passed);
     }
 
@@ -734,11 +880,11 @@ Muncher.prototype.rewriteJs = function(js, to) {
 
     js = that.rewriteJsString(js);
 
-    fs.writeFileSync(to + '.munched', (this.compress['js']) ? this.compressJs(js): js);
+    fs.writeFileSync(to + this.suffix, (this.compress['js']) ? this.compressJs(js): js);
 
-    var percent = 100 - ((fs.statSync(to + '.munched').size / this.files[to]) * 100);
+    var percent = 100 - ((fs.statSync(to + this.suffix).size / this.files[to]) * 100);
     var savings = (that.showSavings) ? clc.blue.bold(percent.toFixed(2) + '%') + ' Saved for ': '';
-    that.echo(savings + to + '.munched');
+    that.echo(savings + to + this.suffix);
 }
 
 /** 
@@ -917,4 +1063,21 @@ exports.run = function() {
 // expose for testing
 exports.Muncher = Muncher;
 
-// have fun <3
+
+
+function hasMatching(str, arr) {
+    var found = false
+
+    arr.forEach(function(v) {
+        if (v == str) {
+            found = true
+            return;
+        }
+    })
+
+    return found;
+}
+
+function escapeRegExp(str) {
+  return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+}
